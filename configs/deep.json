@@ -1,0 +1,38 @@
+{
+  "seed": 2026,
+  "data_dir": "data",
+  "split_file": "splits/seed2026.json",
+  "run_dir": "runs/deep_s2026",
+  "model": {
+    "channels": [
+      48,
+      96,
+      192
+    ],
+    "blocks": [
+      5,
+      5,
+      5
+    ],
+    "num_classes": 10
+  },
+  "training": {
+    "epochs": 200,
+    "batch_size": 128,
+    "optimizer": "sgd",
+    "lr": 0.1,
+    "min_lr": 0.001,
+    "warmup_epochs": 5,
+    "momentum": 0.9,
+    "weight_decay": 0.0005,
+    "label_smoothing": 0.0,
+    "max_train_batches": 0,
+    "max_val_batches": 0
+  },
+  "runtime": {
+    "device": "auto",
+    "amp": true,
+    "num_workers": 0,
+    "cpu_threads": 4
+  }
+}

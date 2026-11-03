@@ -1,0 +1,42 @@
+# Competition data and derivatives stay local.
+data/
+datasets/
+*.png
+*.jpg
+*.jpeg
+*.npy
+*.npz
+
+# Environments, credentials and machine settings.
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+kaggle.json
+*.pem
+*.key
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Model artifacts, predictions, archives and local run logs.
+runs/
+submissions/
+artifacts/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.zip
+*.tar
+*.gz
+*.log
+requirements-installed*.txt
+
+# Generated split IDs/normalization are ignored initially; share with team only.
+splits/
