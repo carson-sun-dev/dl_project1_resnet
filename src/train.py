@@ -17,8 +17,9 @@ from torch.utils.data import DataLoader
 
 from .data import ImageDataset, load_split, make_transform
 from .models import build_model, parameter_counts
-from .utils import (device_for, epoch_lr, file_hash, read_json, restore_rng, rng_state,
-                    save_checkpoint, seed_all, seed_worker, sync, write_json)
+from .utils import (dependency_versions, device_for, epoch_lr, file_hash, precision_policy,
+                    read_json, restore_rng, rng_state, save_checkpoint, seed_all,
+                    seed_worker, sync, validate_resume_precision, write_json)
 
 
 def amp_context(device, dtype):
@@ -98,6 +99,7 @@ def _train_locked(c, run_dir, resume, stop_after_epoch):
     dtype = None
     if device.type == "cuda" and c["runtime"]["amp"]:
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    policy = precision_policy(dtype)
     scaler = torch.amp.GradScaler("cuda", enabled=dtype == torch.float16)
     model = build_model(c["model"]).to(device)
     counts = parameter_counts(model)
@@ -124,6 +126,14 @@ def _train_locked(c, run_dir, resume, stop_after_epoch):
         state = torch.load(last_path, map_location="cpu", weights_only=False)
         if state["identity"] != identity:
             raise ValueError("Resume config/split differs. Preserve settings or start a new run.")
+        legacy_environment = None
+        if "precision_policy" not in state:
+            environments_path = run_dir/"resume_environments.json"
+            environments = read_json(environments_path) if environments_path.exists() else []
+            environment_path = run_dir/"environment.json"
+            legacy_environment = (environments[-1] if environments else
+                                  read_json(environment_path) if environment_path.exists() else None)
+        validate_resume_precision(state, policy, legacy_environment)
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         scaler.load_state_dict(state["scaler"])
@@ -138,6 +148,7 @@ def _train_locked(c, run_dir, resume, stop_after_epoch):
     sources = {p.name: file_hash(p) for p in Path(__file__).parent.glob("*.py")}
     revision = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
     runtime_record = {"device": str(device), "precision": str(dtype) if dtype else "float32",
+                      "precision_policy": policy, **dependency_versions(),
                       "torch": str(torch.__version__), "python": platform.python_version(),
                       "gpu": torch.cuda.get_device_name() if device.type == "cuda" else None,
                       "parameter_counts": counts, "source_hashes": sources,
@@ -195,11 +206,13 @@ def _train_locked(c, run_dir, resume, stop_after_epoch):
                 "model": model.state_dict(), "model_config": c["model"], "epoch": best_epoch,
                 "normalization": {"mean": split["mean"], "std": split["std"]},
                 "parameter_counts": counts, "validation": result, "identity": identity,
+                "precision_policy": policy,
                 "smoke_test": smoke, "classes": split["classes"]})
         sync(device)
         run_seconds += time.perf_counter()-epoch_start
         prior_peak = max(prior_peak, torch.cuda.max_memory_allocated() if device.type == "cuda" else 0)
         state = {"model": model.state_dict(), "optimizer": optimizer.state_dict(),
+                 "precision_policy": policy,
                  "scaler": scaler.state_dict(), "epoch": epoch+1, "identity": identity,
                  "rng": rng_state(), "train_generator": train_generator.get_state(),
                  "val_generator": val_generator.get_state(), "history": history,

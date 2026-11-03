@@ -9,7 +9,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from .utils import file_hash, read_json, write_json
+from .utils import file_hash, read_json, validate_normalization, write_json
 
 CLASSES = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 
@@ -127,13 +127,13 @@ def load_split(root, path):
         raise ValueError("Invalid split sizes or duplicate IDs")
     if set(a) & set(b) or set(a) | set(b) != ids:
         raise ValueError("Split overlaps or does not cover all training IDs")
-    if len(split["mean"]) != 3 or len(split["std"]) != 3 or min(split["std"]) <= 0:
-        raise ValueError("Invalid normalization")
+    validate_normalization(split)
     lookup = {r["id"]: r for r in rows}
     return split, [lookup[i] for i in a], [lookup[i] for i in b]
 
 
 def make_transform(mean, std, training):
+    validate_normalization({"mean": mean, "std": std})
     steps = [transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip()] if training else []
     return transforms.Compose(steps + [transforms.ToTensor(), transforms.Normalize(mean, std)])
 
