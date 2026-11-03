@@ -137,6 +137,14 @@ are logged but code changes are not automatically reverted. RNG restoration is
 tested for uninterrupted vs resumed CPU runs; CUDA/MPS behavior needs validation
 on the actual machine and cross-device bitwise equality is not promised.
 
+Checkpoints now store the effective FP32/BF16/FP16 precision policy. Resume requires
+the same policy and checks it before restoring training state. For older checkpoints,
+keep `environment.json` and `resume_environments.json` with the run: an empty scaler
+alone cannot distinguish FP32 from BF16. Unsupported or ambiguous precision changes
+fail with an explanation instead of a scaler-loading error. Existing checkpoint files
+are not migrated in place. New environment records also include torchvision, NumPy,
+Pillow, CUDA build and cuDNN versions plus the effective precision policy.
+
 An interrupt during an epoch loses that unfinished epoch. Completed checkpoints
 are written through a temporary file and atomic replacement. Concurrent writers
 to the same run directory are blocked with a process lock. A clean timed pilot

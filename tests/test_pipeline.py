@@ -11,14 +11,14 @@ import numpy as np
 from PIL import Image
 import torch
 
-from src.data import audit, load_split, prepare_split, read_csv
+from src.data import CLASSES, audit, load_split, make_transform, prepare_split, read_csv
 from src.models import build_model, parameter_counts
 from src.evaluate import evaluate_checkpoint
 from src.workflow import run as run_workflow
 from src.predict import predict
 from src.submission import validate_submission
 from src.train import train
-from src.utils import read_json, write_json
+from src.utils import precision_policy, read_json, write_json
 
 
 def csv_write(path, columns, rows):
@@ -94,6 +94,61 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_submission(out, sample)
 
+    def test_split_and_transform_reject_nonfinite_normalization(self):
+        path = self.root/"invalid_split.json"
+        for field, value in (("mean", float("nan")), ("mean", float("inf")),
+                             ("std", float("nan")), ("std", float("inf")),
+                             ("std", 0), ("std", -1)):
+            with self.subTest(field=field, value=value):
+                split = read_json(self.split)
+                split[field][0] = value
+                # Deliberately bypass write_json's finite-value guard.
+                path.write_text(json.dumps(split), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "Invalid normalization"):
+                    load_split(self.data, path)
+                for training in (False, True):
+                    with self.assertRaisesRegex(ValueError, "Invalid normalization"):
+                        make_transform(split["mean"], split["std"], training)
+
+    def test_prediction_rejects_invalid_checkpoint_metadata(self):
+        checkpoint = self.root/"invalid_metadata.pt"
+        output = self.root/"invalid_metadata"/"submission.csv"
+        valid = {"smoke_test": False, "classes": CLASSES,
+                 "normalization": {"mean": [0.5]*3, "std": [0.2]*3}}
+        for classes in (None, CLASSES[::-1], CLASSES[:-1], list(range(10))):
+            with self.subTest(classes=classes):
+                state = copy.deepcopy(valid)
+                state["classes"] = classes
+                torch.save(state, checkpoint)
+                with self.assertRaisesRegex(ValueError, "class mapping"):
+                    predict(checkpoint, self.data, output, device="cpu")
+        for normalization in (None, {}, {"mean": [float("nan")]*3, "std": [1]*3},
+                              {"mean": [0]*3, "std": [float("inf")]*3},
+                              {"mean": [0]*3, "std": [0]*3}):
+            with self.subTest(normalization=normalization):
+                state = copy.deepcopy(valid)
+                state["normalization"] = normalization
+                torch.save(state, checkpoint)
+                with self.assertRaisesRegex(ValueError, "Invalid normalization"):
+                    predict(checkpoint, self.data, output, device="cpu")
+        self.assertFalse(output.parent.exists())
+
+    def test_prediction_rejects_nonfinite_logits_before_export(self):
+        model_config = {"channels": [4, 8, 16], "blocks": [1, 1, 1]}
+        model = build_model(model_config)
+        checkpoint = self.root/"nonfinite.pt"
+        output = self.root/"nonfinite"/"submission.csv"
+        for value in (float("nan"), float("inf"), -float("inf")):
+            with self.subTest(value=value):
+                with torch.no_grad():
+                    model.head.bias.fill_(value)
+                torch.save({"smoke_test": False, "classes": CLASSES,
+                            "normalization": {"mean": [0.5]*3, "std": [0.2]*3},
+                            "model_config": model_config, "model": model.state_dict()}, checkpoint)
+                with self.assertRaisesRegex(RuntimeError, "Non-finite prediction logits"):
+                    predict(checkpoint, self.data, output, device="cpu")
+                self.assertFalse(output.parent.exists())
+
     def test_training_resume_and_prediction_roundtrip(self):
         c = read_json(Path(__file__).resolve().parents[1]/"configs"/"smoke.json")
         c.update(data_dir=str(self.data), split_file=str(self.split))
@@ -116,7 +171,29 @@ class PipelineTests(unittest.TestCase):
             self.assertTrue(torch.equal(a["model"][key], b["model"][key]), key)
         self.assertEqual(a["best_score"], b["best_score"])
         self.assertEqual(a["train_generator"].tolist(), b["train_generator"].tolist())
+        self.assertEqual(b["precision_policy"], precision_policy(None))
+        environment = read_json(Path(resumed["run_dir"])/"environment.json")
+        self.assertEqual(environment["precision_policy"], precision_policy(None))
+        self.assertTrue({"torchvision", "numpy", "Pillow", "cuda", "cudnn"} <= environment.keys())
+        incompatible = copy.deepcopy(b)
+        incompatible["precision_policy"] = precision_policy(torch.bfloat16)
+        torch.save(incompatible, Path(resumed["run_dir"])/"last.pt")
+        with self.assertRaisesRegex(ValueError, "Unsupported resume precision transition"):
+            train(resumed, resume=True)
+        # Simulate a legacy checkpoint/environment, preserving its recorded FP32 mode.
+        legacy = copy.deepcopy(b)
+        legacy.pop("precision_policy")
+        torch.save(legacy, Path(resumed["run_dir"])/"last.pt")
+        for name in ("environment.json", "resume_environments.json"):
+            path = Path(resumed["run_dir"])/name
+            record = read_json(path)
+            for item in record if isinstance(record, list) else [record]:
+                item.pop("precision_policy", None)
+            write_json(path, record)
         best = Path(resumed["run_dir"])/"best.pt"
+        legacy_best = torch.load(best, weights_only=True)
+        self.assertEqual(legacy_best.pop("precision_policy"), precision_policy(None))
+        torch.save(legacy_best, best)
         output = self.root/"predictions"/"submission.csv"
         with self.assertRaisesRegex(ValueError, "Smoke checkpoint"):
             predict(best, self.data, output, device="cpu")

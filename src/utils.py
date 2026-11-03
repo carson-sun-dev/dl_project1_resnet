@@ -3,10 +3,69 @@ import json
 import math
 import os
 import random
+from importlib.metadata import PackageNotFoundError, version
+from numbers import Real
 from pathlib import Path
 
 import numpy as np
 import torch
+
+
+def validate_normalization(normalization):
+    """Accept only three finite channel means and positive finite stds."""
+    try:
+        mean, std = normalization["mean"], normalization["std"]
+        valid = (len(mean) == len(std) == 3
+                 and all(isinstance(x, Real) and not isinstance(x, bool) and math.isfinite(x)
+                         for x in [*mean, *std])
+                 and all(x > 0 for x in std))
+    except (KeyError, TypeError, ValueError, OverflowError):
+        valid = False
+    if not valid:
+        raise ValueError("Invalid normalization: expected three finite means and three positive finite standard deviations")
+
+
+def precision_policy(dtype):
+    """Describe effective training precision; None means FP32 without autocast."""
+    if dtype not in (None, torch.float16, torch.bfloat16):
+        raise ValueError(f"Unsupported autocast dtype: {dtype}")
+    return {"compute_dtype": str(dtype).split(".")[-1] if dtype is not None else "float32",
+            "autocast_enabled": dtype is not None, "grad_scaler_enabled": dtype == torch.float16}
+
+
+def validate_resume_precision(state, current_policy, legacy_environment=None):
+    """Reject precision changes before restoring any training state."""
+    policies = {p["compute_dtype"]: p for p in
+                (precision_policy(None), precision_policy(torch.float16), precision_policy(torch.bfloat16))}
+    saved = state.get("precision_policy")
+    if "precision_policy" not in state:
+        recorded = (legacy_environment or {}).get("precision")
+        if recorded is not None:
+            saved = policies.get(str(recorded).replace("torch.", ""))
+        elif state.get("scaler"):
+            # Only FP16 used an enabled scaler in the original trainer.
+            saved = policies["float16"]
+        else:
+            raise ValueError("Cannot determine legacy checkpoint precision (FP32 or BF16). "
+                             "Restore its environment.json/resume_environments.json before resuming.")
+    if not isinstance(saved, dict) or saved not in policies.values():
+        raise ValueError("Invalid or unknown checkpoint precision policy")
+    if saved != current_policy:
+        raise ValueError(f"Unsupported resume precision transition: {saved['compute_dtype']} -> "
+                         f"{current_policy['compute_dtype']}. Use the original effective precision "
+                         "or start a new run directory.")
+    if "scaler" not in state or bool(state["scaler"]) != saved["grad_scaler_enabled"]:
+        raise ValueError("Checkpoint scaler state does not match its precision policy")
+
+
+def dependency_versions():
+    result = {}
+    for name in ("torchvision", "numpy", "Pillow"):
+        try:
+            result[name] = version(name)
+        except PackageNotFoundError:
+            result[name] = None
+    return {**result, "cuda": torch.version.cuda, "cudnn": torch.backends.cudnn.version()}
 
 
 def read_json(path):

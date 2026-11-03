@@ -7,10 +7,10 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from .data import ImageDataset, audit, make_transform, read_csv
+from .data import CLASSES, ImageDataset, audit, make_transform, read_csv
 from .models import build_model, parameter_counts
 from .submission import validate_submission
-from .utils import device_for, file_hash, write_json
+from .utils import device_for, file_hash, validate_normalization, write_json
 
 
 @torch.no_grad()
@@ -26,17 +26,23 @@ def predict(checkpoint, data_dir, output, device="auto", batch_size=256, num_wor
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
     if state["smoke_test"] and not allow_smoke:
         raise ValueError("Smoke checkpoint: do not submit it. --allow-smoke is only for pipeline testing.")
+    norm = state.get("normalization")
+    validate_normalization(norm)
+    if state.get("classes") != CLASSES:
+        raise ValueError("Unexpected checkpoint class mapping; expected CIFAR-10 labels 0..9 in order")
     device = device_for(device)
     model = build_model(state["model_config"]).to(device).eval()
     model.load_state_dict(state["model"])
     test = read_csv(root/"test.csv", ["id", "filename"])
     sample = read_csv(root/"sample_submission.csv", ["id", "label"])
-    norm = state["normalization"]
     ds = ImageDataset(root, test, make_transform(norm["mean"], norm["std"], False), labeled=False)
     loader = DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     predictions = {}
     for x, ids in loader:
-        labels = model(x.to(device)).argmax(1).cpu().tolist()
+        logits = model(x.to(device))
+        if not torch.isfinite(logits).all():
+            raise RuntimeError("Non-finite prediction logits; no submission was written")
+        labels = logits.argmax(1).cpu().tolist()
         predictions.update(zip(ids, labels))
     if set(predictions) != {r["id"] for r in sample}:
         raise ValueError("Missing or unexpected prediction IDs")
