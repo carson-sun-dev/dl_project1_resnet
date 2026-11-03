@@ -2,6 +2,7 @@ import contextlib
 import copy
 import csv
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,10 +13,12 @@ import torch
 
 from src.data import audit, load_split, prepare_split, read_csv
 from src.models import build_model, parameter_counts
+from src.evaluate import evaluate_checkpoint
+from src.workflow import run as run_workflow
 from src.predict import predict
 from src.submission import validate_submission
 from src.train import train
-from src.utils import read_json
+from src.utils import read_json, write_json
 
 
 def csv_write(path, columns, rows):
@@ -48,6 +51,7 @@ class PipelineTests(unittest.TestCase):
         csv_write(cls.data/"sample_submission.csv", ["id", "label"], [[str(i), 0] for i in [3, 1, 0, 2]])
         cls.split = cls.root/"split.json"
         prepare_split(cls.data, cls.split, seed=2026, val_fraction=0.25)
+        cls.split.write_text(json.dumps(read_json(cls.split), separators=(",", ":")))
 
     @classmethod
     def tearDownClass(cls):
@@ -120,6 +124,34 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(result["rows"], 4)
         self.assertTrue(validate_submission(output, self.data/"sample_submission.csv")["valid"])
         self.assertEqual([r["id"] for r in read_csv(output, ["id", "label"])], ["3", "1", "0", "2"])
+        # Completed-run wrapper regenerates analysis without another training epoch.
+        with contextlib.redirect_stdout(io.StringIO()):
+            manifest = run_workflow(resumed, resume=True)
+        self.assertTrue(manifest["complete"])
+        self.assertTrue(manifest["smoke_test"])
+        self.assertIsNone(manifest["submission_path"])
+        run_root = Path(resumed["run_dir"])
+        metrics = read_json(run_root/"validation"/"metrics.json")
+        self.assertEqual(metrics["images"], 10)
+        self.assertTrue(metrics["smoke_test"])
+        self.assertEqual(metrics["checkpoint_epoch"], complete["best_epoch"])
+        preds = read_csv(run_root/"validation"/"predictions.csv",
+                         ["id", "filename", "true_label", "predicted_label", "correct"])
+        self.assertEqual([r["id"] for r in preds], read_json(self.split)["val_ids"])
+        self.assertAlmostEqual(metrics["accuracy"], sum(int(r["correct"]) for r in preds)/10)
+        with (run_root/"validation"/"confusion_matrix.csv").open(newline="") as f:
+            matrix = list(csv.reader(f))[1:]
+        self.assertEqual(sum(sum(map(int, r[1:])) for r in matrix), 10)
+        self.assertTrue((run_root/"curves.png").is_file())
+        self.assertTrue((run_root/"validation"/"confusion_matrix.png").is_file())
+        # Never export a smoke run from the convenience wrapper.
+        with self.assertRaisesRegex(ValueError, "smoke submissions"):
+            run_workflow(resumed, resume=True, submission_output=self.root/"blocked"/"submission.csv")
+        saved_split = read_json(run_root/"split.json")
+        saved_split["seed"] += 1
+        write_json(run_root/"split.json", saved_split)
+        with self.assertRaisesRegex(ValueError, "split differs"):
+            evaluate_checkpoint(run_root, self.data, device="cpu")
         with self.assertRaises(FileExistsError):
             train(resumed)
         with self.assertRaises(FileExistsError):

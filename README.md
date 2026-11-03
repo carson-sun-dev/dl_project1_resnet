@@ -8,6 +8,10 @@ been performed by this scaffold.** There is no accuracy claim or submission yet.
 The repository is public at the owner's request. Competition data, checkpoints,
 predictions, environments and credentials are excluded by `.gitignore`.
 
+For the complete Chinese team walkthrough, see [TEAM_GUIDE.md](TEAM_GUIDE.md).
+The `src.workflow` entry point runs training, plots and best-checkpoint validation
+analysis. Hidden-evaluation predictions require an explicit export command.
+
 ## 1. Local setup
 
 Python 3.9–3.12, macOS or Linux. Use an isolated environment. Run commands from
@@ -188,3 +192,34 @@ CPU resumption across a completed epoch. They do not measure CIFAR-10 accuracy.
 See `CONTRIBUTING.md` for branch/PR workflow and `REFERENCES.md` for attribution.
 Record measured experiments in `experiments/results.csv`. Keep data and large
 artifacts outside Git. Project report drafting is deferred; log retention starts now.
+
+## 7. Complete artifact workflow
+
+After preparing the dataset and split, use one config at a time:
+
+```bash
+.venv/bin/python -m src.workflow --config configs/baseline.json --device mps
+.venv/bin/python -m src.workflow --config configs/baseline.json --device mps --resume
+```
+
+Use `--device cuda` on an allocated NVIDIA GPU. The wrapper preserves the original
+trainer and its resume rules. It adds `curves.png`, full best-checkpoint FP32
+validation metrics, per-class statistics, validation predictions, confusion-matrix
+CSV/PNG and `artifacts.json` with file sizes/hashes. Smoke results are marked as
+such; partial runs export curves but defer full validation analysis until completion.
+Validation data come only from the saved split, whose hash must match the checkpoint.
+FP32 reevaluation may differ slightly from training-time AMP metrics.
+
+To regenerate validation analysis without training:
+
+```bash
+.venv/bin/python -m src.evaluate --run-dir runs/baseline_s2026 --device mps
+```
+
+The workflow defaults to no hidden-evaluation prediction. To explicitly export
+a CSV after a complete formal training run, pass
+`--submission-output submissions/baseline_s2026/submission.csv`. Existing files
+are protected. For a previously completed run, use `src.predict` directly.
+
+The new workflow and evaluation code were statically checked only at the user's
+request; they have not been executed. See `VALIDATION.md` for verification scope.

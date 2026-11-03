@@ -7,6 +7,7 @@ import fcntl
 import json
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import time
 
@@ -93,7 +94,7 @@ def _train_locked(c, run_dir, resume, stop_after_epoch):
         raise FileNotFoundError("No last.pt to resume; choose a new run directory for a fresh run.")
     if not resume:
         write_json(config_path, c)
-        write_json(run_dir/"split.json", split)
+        shutil.copyfile(c["split_file"], run_dir/"split.json")
     dtype = None
     if device.type == "cuda" and c["runtime"]["amp"]:
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
