@@ -1,0 +1,53 @@
+{
+  "mode": "scratch",
+  "seed": 2026,
+  "model": {
+    "architecture": "shake_shake",
+    "width": 40,
+    "blocks": [
+      4,
+      4,
+      4
+    ]
+  },
+  "training": {
+    "epochs": 1000,
+    "batch_size": 128,
+    "lr": 0.2,
+    "min_lr": 0.0,
+    "warmup_epochs": 5,
+    "momentum": 0.9,
+    "nesterov": true,
+    "weight_decay": 0.0001
+  },
+  "augmentation": {
+    "policy": "cifar10_autoaugment",
+    "interpolation": "nearest",
+    "crop_padding": 4,
+    "padding_mode": "constant",
+    "cutout_length": 16
+  },
+  "runtime": {
+    "amp": true,
+    "num_workers": 2,
+    "cpu_threads": 4,
+    "validation_batch_size": 256,
+    "cudnn_benchmark": true
+  },
+  "run_dir": "runs/shake_measured1000_full_runpod_s2026",
+  "source_run": "runs/shake_aa_s2026",
+  "data_dir": "data",
+  "training_scope": "full_data",
+  "normalization": {
+    "mean": [
+      0.4915135944308404,
+      0.48231470971200857,
+      0.4468138379970015
+    ],
+    "std": [
+      0.24705092701489773,
+      0.24347971893365983,
+      0.2615095063426547
+    ]
+  }
+}

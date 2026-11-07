@@ -62,7 +62,11 @@ def parameter_counts(model):
 
 
 def build_model(config):
-    model = CifarResNet(**config)
+    if config.get("architecture") == "shake_shake":
+        from .shake_shake import ShakeShakeNet
+        model = ShakeShakeNet(width=config.get("width", 40), blocks=config.get("blocks", [4, 4, 4]))
+    else:
+        model = CifarResNet(**config)
     counts = parameter_counts(model)
     if counts["trainable"] > PARAMETER_LIMIT:
         raise ValueError(f"Parameter budget exceeded: {counts['trainable']:,} > {PARAMETER_LIMIT:,}")

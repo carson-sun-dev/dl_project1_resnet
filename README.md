@@ -231,3 +231,7 @@ are protected. For a previously completed run, use `src.predict` directly.
 
 The new workflow and evaluation code were statically checked only at the user's
 request; they have not been executed. See `VALIDATION.md` for verification scope.
+
+## Shaohan Yang — Shake-Shake 0.899
+
+[优化路径与结果](experiments/SHAOHAN_OPTIMIZATION_REPORT.md) · [配方、复现与私有材料要求](experiments/SHAKE899_REPRODUCTION.md)。本分支只包含 0.899 主线代码与配置，不包含数据、权重或预测文件。

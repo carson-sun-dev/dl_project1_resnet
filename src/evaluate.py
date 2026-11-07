@@ -22,6 +22,8 @@ def evaluate_checkpoint(run_dir, data_dir, device="auto", batch_size=256, num_wo
         raise ValueError("Invalid batch size/worker count")
     checkpoint = root / "best.pt"
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    if state.get("training_scope") == "full_data":
+        raise ValueError("Full-data refit has no held-out validation split")
     split_path = root / "split.json"
     if file_hash(split_path) != state["identity"]["split_sha256"]:
         raise ValueError("Validation split differs from the checkpoint's training split")
