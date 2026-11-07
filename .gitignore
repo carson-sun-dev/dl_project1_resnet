@@ -40,3 +40,16 @@ requirements-installed*.txt
 
 # Generated split IDs/normalization are ignored initially; share with team only.
 splits/
+
+# Generated training-image hashes and machine-local reproduction evidence.
+provenance/
+
+# Additional credential and export formats stay outside source review.
+.kaggle/
+.ssh/
+*api_token*
+*.safetensors
+*.pkl
+*.pickle
+*.p12
+*.pfx

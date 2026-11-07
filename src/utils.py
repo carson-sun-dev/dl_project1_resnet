@@ -3,12 +3,44 @@ import json
 import math
 import os
 import random
+from contextlib import contextmanager
 from importlib.metadata import PackageNotFoundError, version
 from numbers import Real
 from pathlib import Path
 
 import numpy as np
 import torch
+
+
+@contextmanager
+def run_lock(path):
+    """Nonblocking process lock on Windows and POSIX; released even on failure."""
+    with Path(path).open("a+b") as lock:
+        if os.name == "nt":
+            import msvcrt
+            if lock.seek(0, os.SEEK_END) == 0:
+                lock.write(b"0")
+                lock.flush()
+            lock.seek(0)
+            try:
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as exc:
+                raise RuntimeError("Another training process is using this run directory") from exc
+            try:
+                yield
+            finally:
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise RuntimeError("Another training process is using this run directory") from exc
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def validate_normalization(normalization):

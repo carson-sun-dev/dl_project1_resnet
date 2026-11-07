@@ -10,11 +10,13 @@ from torch.utils.data import DataLoader
 from .data import CLASSES, ImageDataset, audit, make_transform, read_csv
 from .models import build_model, parameter_counts
 from .submission import validate_submission
+from .tta import probabilities, require_tta_benefit
 from .utils import device_for, file_hash, validate_normalization, write_json
 
 
 @torch.no_grad()
-def predict(checkpoint, data_dir, output, device="auto", batch_size=256, num_workers=0, allow_smoke=False):
+def predict(checkpoint, data_dir, output, device="auto", batch_size=256, num_workers=0, allow_smoke=False,
+            horizontal_flip=False, tta_validation=None):
     root, output = Path(data_dir), Path(output)
     if output.exists() or output.with_suffix(".metadata.json").exists():
         raise FileExistsError("Submission exists. Choose another output directory to preserve provenance.")
@@ -30,6 +32,8 @@ def predict(checkpoint, data_dir, output, device="auto", batch_size=256, num_wor
     validate_normalization(norm)
     if state.get("classes") != CLASSES:
         raise ValueError("Unexpected checkpoint class mapping; expected CIFAR-10 labels 0..9 in order")
+    if horizontal_flip:
+        require_tta_benefit(tta_validation, checkpoint, state)
     device = device_for(device)
     model = build_model(state["model_config"]).to(device).eval()
     model.load_state_dict(state["model"])
@@ -39,10 +43,8 @@ def predict(checkpoint, data_dir, output, device="auto", batch_size=256, num_wor
     loader = DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     predictions = {}
     for x, ids in loader:
-        logits = model(x.to(device))
-        if not torch.isfinite(logits).all():
-            raise RuntimeError("Non-finite prediction logits; no submission was written")
-        labels = logits.argmax(1).cpu().tolist()
+        probs = probabilities(model, x.to(device), horizontal_flip)
+        labels = probs.argmax(1).cpu().tolist()
         predictions.update(zip(ids, labels))
     if set(predictions) != {r["id"] for r in sample}:
         raise ValueError("Missing or unexpected prediction IDs")
@@ -57,7 +59,10 @@ def predict(checkpoint, data_dir, output, device="auto", batch_size=256, num_wor
     metadata = {"checkpoint_sha256": file_hash(checkpoint), "checkpoint_epoch": state["epoch"],
                 "parameter_counts": parameter_counts(model), "model_config": state["model_config"],
                 "test_csv_sha256": file_hash(root/"test.csv"), "submission_sha256": file_hash(output),
-                "smoke_test": state["smoke_test"], "rows": len(sample), "inference": "single model, FP32, no TTA"}
+                "smoke_test": state["smoke_test"], "rows": len(sample),
+                "inference": "single model, FP32, horizontal-flip probability mean" if horizontal_flip
+                else "single model, FP32, no TTA",
+                "tta_validation_sha256": file_hash(tta_validation) if horizontal_flip else None}
     write_json(output.with_suffix(".metadata.json"), metadata)
     return metadata
 
@@ -71,5 +76,8 @@ if __name__ == "__main__":
     p.add_argument("--batch-size", type=int, default=256)
     p.add_argument("--num-workers", type=int, default=0)
     p.add_argument("--allow-smoke", action="store_true")
+    p.add_argument("--horizontal-flip", action="store_true", help="Requires a beneficial full-split TTA report")
+    p.add_argument("--tta-validation", help="Report produced by python -m src.tta")
     a = p.parse_args()
-    print(predict(a.checkpoint, a.data_dir, a.output, a.device, a.batch_size, a.num_workers, a.allow_smoke))
+    print(predict(a.checkpoint, a.data_dir, a.output, a.device, a.batch_size, a.num_workers, a.allow_smoke,
+                  a.horizontal_flip, a.tta_validation))

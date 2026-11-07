@@ -1,233 +1,122 @@
-# Project 1 — CIFAR-10 ResNet under 5M parameters
+﻿# CIFAR-10 residual networks under 5 million parameters
 
-NYU Tandon Deep Learning F26 competition scaffold. It includes data validation,
-a reproducible stratified split, explicit residual networks, training/resumption,
-metric plots, and checked Kaggle CSV export. **No formal competition training has
-been performed by this scaffold.** There is no accuracy claim or submission yet.
+Course competition project studying scratch-trained residual CNNs on the supplied
+CIFAR-10 data. The final implementation in this repository is **PreAct WRN-22-4
+with ASAM, trained on all 50,000 permitted images for 400 epochs, seed 2026, using
+the fixed final EMA weights**. It has **4,298,970 trainable parameters**.
 
-The repository is public at the owner's request. Competition data, checkpoints,
-predictions, environments and credentials are excluded by `.gitignore`.
+This model achieved **89.80% public accuracy** (Kaggle submission **58063369**).
+The saved receipt and submitted CSV were reconciled byte for byte. Prediction
+used one model, standard FP32 CPU inference, one view, and no TTA or ensemble.
+The full-data model has **no independent local validation score**. Private scores
+and current final submission selections are unknown.
 
-For the complete Chinese team walkthrough, see [TEAM_GUIDE.md](TEAM_GUIDE.md).
-The `src.workflow` entry point runs training, plots and best-checkpoint validation
-analysis. Hidden-evaluation predictions require an explicit export command.
+A teammate separately reported **89.90%** for a full-data Shake-Shake model. That
+implementation and result were not independently verified here and are not
+provided by this repository. The 89.80% result identifies this repository's
+verified final model; it is not a claim to the team's highest reported score.
 
-## 1. Local setup
+## Code and documentation
 
-Python 3.9–3.12, macOS or Linux. Use an isolated environment. Run commands from
-the project root; paths in configurations are relative to the working directory.
+| Location | Purpose |
+| --- | --- |
+| [final_model/](final_model/) | Exact final training source and configuration, with a portable command launcher and source verification |
+| [Architecture](docs/ARCHITECTURE.md) | Blocks, dimensions, initialization and parameter accounting |
+| [Training](docs/TRAINING.md) | Data, augmentation, optimizer, EMA and precision policy |
+| [Reproducibility](docs/REPRODUCIBILITY.md) | Input identities, setup, scratch training, recovery and CPU prediction |
+| [Experiments](docs/EXPERIMENTS.md) | Twenty completed trajectories, partial runs, controls and unrun proposals |
+| [Results](docs/RESULTS.md) | Public results, evidence strength and interpretation limits |
+| [References](docs/REFERENCES.md) | Methods, implementation attribution and assistance disclosure |
+
+Root `src/`, configurations and older experiment documents are retained as
+historical study material. Use `final_model/` for the final ASAM result; root
+modules with the same names are not interchangeable with the frozen final source.
+The experiment inventory includes historical variants whose complete frozen
+implementations are not all distributed in this public package.
+
+## Reproduce the final pipeline
+
+Run commands from the repository root in an isolated Python environment. Install
+the pinned dependencies in [requirements.txt](requirements.txt), with the matching
+CUDA build of PyTorch when training. See the reproduction guide for the recorded
+environment and limits on exact numerical reproduction.
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pip freeze > requirements-installed.txt
+python -m pip install -r requirements.txt
+python final_model/run.py verify
 ```
 
-Dependencies are pinned to PyTorch 2.8.0 / torchvision 0.23.0. For a GPU machine,
-verify its PyTorch CUDA build using the official installer instructions; do not
-replace an existing course environment blindly. Before a GPU run:
-
-```bash
-.venv/bin/python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
-```
-
-`device: auto` chooses CUDA, then Apple MPS, then CPU. AMP applies only to CUDA
-(BF16 when supported, otherwise scaled FP16); MPS/CPU use FP32. A CPU fallback can
-be slow; specify `--device cuda` on HPC to fail clearly if CUDA is unavailable.
-The original development environment is outside this repository; a project-local
-environment has not been installed automatically.
-
-## 2. Supplied dataset
-
-Place the course files here (already present on the owner's machine):
+Obtain the official course data through the authorized competition/course
+channel and place it under `data/`:
 
 ```text
 data/
-  train_images/             50,000 PNGs
-  test_images/               2,000 PNGs
-  train_labels.csv          id,filename,label
-  test.csv                  id,filename
-  sample_submission.csv     id,label
+  train_images/           # 50,000 supplied RGB images
+  test_images/            # 2,000 supplied evaluation images
+  train_labels.csv        # id,filename,label
+  test.csv                # id,filename
+  sample_submission.csv   # id,label
 ```
+
+Prepare and verify the original split and the training-image manifest locally:
 
 ```bash
-.venv/bin/python -m src.data audit --data-dir data --verify-images
-.venv/bin/python -m src.data prepare --data-dir data --output splits/seed2026.json
+python final_model/run.py data prepare --data-dir data --split-file splits/seed2026.json --output provenance/training_image_hashes.csv
+python final_model/run.py data audit --data-dir data --split-file splits/seed2026.json --output provenance/training_image_hashes.csv
 ```
 
-The second command fixes 45,000 training / 5,000 validation IDs, with 500 validation
-images per class, seed 2026. Mean/std are computed from the 45,000 training images
-only. The split records the exact training CSV hash, all IDs and normalization.
-Existing matching splits are reused; differing settings are not silently replaced.
-
-All teammates must use the same dataset and exact split artifact. The split is
-initially ignored by Git; transfer it within the registered team, or recreate it
-using the pinned environment and compare the split SHA-256. Image audit checks
-decoding/shape but does not establish the absence of content duplicates. Never
-use hidden test images for training, normalization fitting or manual labeling.
-
-## 3. Models and training configurations
-
-| Config | Channels | Blocks per stage | Trainable parameters | Purpose |
-|---|---|---|---|---|
-| `configs/baseline.json` | 32 / 64 / 128 | 3 / 3 / 3 | 1,084,586 | Baseline |
-| `configs/wide.json` | 64 / 128 / 256 | 3 / 3 / 3 | 4,327,754 | Width experiment |
-| `configs/deep.json` | 48 / 96 / 192 | 5 / 5 / 5 | 4,180,858 | Depth experiment at a similar budget |
-| `configs/smoke.json` | 16 / 32 / 64 | 1 / 1 / 1 | 78,042 | Two epochs, just a few batches; correctness only |
-
-The stem is a 3×3 stride-1 convolution; stages downsample 32→16→8, followed by global
-average pooling and a ten-class linear head. Residual branches contain two 3×3
-convolutions and BatchNorm; transitions use 1×1 projection skips. All weights
-start from random initialization. The model outputs logits for cross-entropy.
+The [reproduction guide](docs/REPRODUCIBILITY.md) lists the required hashes. The
+split fixes normalization and historical provenance; final training uses all
+50,000 labeled images. Start with a new, empty configured run directory:
 
 ```bash
-.venv/bin/python -m src.models --config configs/baseline.json
-.venv/bin/python -m src.models --config configs/wide.json
-.venv/bin/python -m src.models --config configs/deep.json
+python final_model/run.py model
+python final_model/run.py train --device cuda
+# Recover the same run at an epoch boundary:
+python final_model/run.py train --device cuda --resume
 ```
 
-Every build enforces ≤5,000,000 trainable parameters, including BatchNorm and the
-classification head. Width/depth candidates are custom architectures motivated
-by residual-network literature, not exact reproductions of a named pretrained model.
-
-Formal initial settings (editable before starting a new experiment): 200 epochs,
-batch size 128, SGD momentum 0.9, LR 0.1 with five-epoch warmup then cosine decay
-to 0.001, weight decay 0.0005 applied to all parameters, no label smoothing.
-Training augmentation: padded random crop and horizontal flip. Validation:
-tensor conversion and train-derived normalization only. No MixUp/CutMix is
-enabled yet. Training/validation accuracy is stored as a fraction, not a percent.
-
-Start with the small pipeline check, then launch a formal run deliberately:
+For CPU prediction, `private.pt` means an authorized copy of the original final
+EMA deployment checkpoint. Use a new output path:
 
 ```bash
-.venv/bin/python -m src.train --config configs/smoke.json
-.venv/bin/python -m src.train --config configs/baseline.json
+python final_model/run.py predict --checkpoint private.pt --data-dir data --output submissions/reproduction_NEW/submission.csv --device cpu --batch-size 32 --num-workers 0
+python final_model/run.py validate --file submissions/reproduction_NEW/submission.csv --sample data/sample_submission.csv
 ```
 
-Examples with explicit overrides:
+For your own completed scratch run, use its `final_ema.pt` path and add
+`--reproduction-checkpoint` to the prediction command. This explicitly validates
+a new full-horizon EMA reproduction rather than requiring the original
+checkpoint hash; it does not establish the original 89.80% score or byte identity.
 
-```bash
-.venv/bin/python -m src.train --config configs/baseline.json --device mps
-.venv/bin/python -m src.train --config configs/wide.json --device cuda --data-dir /path/to/course/data --run-dir /path/to/scratch/wide_s2026
-```
+The exporter writes `id,label` in official sample order, with 2,000 unique IDs and
+integer labels 0-9, plus inference metadata. These commands generate and validate
+a local CSV; they do not upload or select a competition submission.
 
-Default `num_workers: 0` is portable for initial debugging. Tune workers/batch size
-after measuring on the actual GPU, using a new configuration/run when changing
-training hyperparameters. Configurations are starting points, not tuned winners.
+## Data use, sharing and attribution
 
-## 4. Checkpoints and interruption recovery
+The supplied course rules require a residual CNN with at most 5,000,000 trainable
+parameters, trained from scratch using only the authorized training data.
+Augmentation is allowed; distillation is allowed with scratch-trained teachers
+using permitted data. The final model uses no teacher, external data or pretrained
+weights. Hidden evaluation images are never used for training, normalization,
+BatchNorm fitting or manual labeling.
 
-Each run saves:
+The user-provided competition rules specify accuracy, a 50%/50% public/private
+split, at most five submissions per registered team per day, and two final
+submission slots. Registered-team sharing must follow the course rules. Public
+competition code must also be linked through the competition forum or a notebook
+available to participants, with appropriate acknowledgment. Publication of this
+repository does not establish that this separate sharing step has occurred.
 
-- `config.json`, `split.json`, `environment.json`: setup, IDs, package/device info,
-  parameter count, source hashes and Git revision.
-- `best.pt`: weights selected by highest validation accuracy, with loss as tie-breaker.
-- `last.pt`: last completed epoch, optimizer/scaler, random states and loader RNG states.
-- `metrics.json`, `metrics.csv`, `summary.json`: measurements, not predictions.
+Data, label files, split ID payloads, image-hash manifests, checkpoints,
+predictions, credentials and private execution records are excluded from public
+source delivery. Share private inputs and weights only through authorized
+team/course channels. Report deadlines, format and upload instructions must be
+confirmed from the actual course rubric.
 
-```bash
-.venv/bin/python -m src.train --config configs/baseline.json --resume
-.venv/bin/python -m src.plot --run-dir runs/baseline_s2026
-```
-
-Use the same overrides and settings as the original run. Dataset location, device
-and worker count can change, but hardware/software changes may change numerics.
-Restore the original source revision for reproducible continuation; source hashes
-are logged but code changes are not automatically reverted. RNG restoration is
-tested for uninterrupted vs resumed CPU runs; CUDA/MPS behavior needs validation
-on the actual machine and cross-device bitwise equality is not promised.
-
-Checkpoints now store the effective FP32/BF16/FP16 precision policy. Resume requires
-the same policy and checks it before restoring training state. For older checkpoints,
-keep `environment.json` and `resume_environments.json` with the run: an empty scaler
-alone cannot distinguish FP32 from BF16. Unsupported or ambiguous precision changes
-fail with an explanation instead of a scaler-loading error. Existing checkpoint files
-are not migrated in place. New environment records also include torchvision, NumPy,
-Pillow, CUDA build and cuDNN versions plus the effective precision policy.
-
-An interrupt during an epoch loses that unfinished epoch. Completed checkpoints
-are written through a temporary file and atomic replacement. Concurrent writers
-to the same run directory are blocked with a process lock. A clean timed pilot
-can preserve the full schedule without pretending that a short run is final:
-
-```bash
-.venv/bin/python -m src.train --config configs/baseline.json --stop-after-epoch 3
-.venv/bin/python -m src.train --config configs/baseline.json --resume
-```
-
-Training seconds include training data loading/updates but exclude validation.
-`compute_seconds_with_validation` includes validation and best-model saving,
-but excludes initial setup and some export/checkpoint-writing overhead. Peak GPU
-memory is PyTorch allocated CUDA memory; MPS/CPU report `null`.
-
-On NYU Burst, prepare/upload files before allocating long GPU sessions where
-possible, then run the script from the allocated Jupyter terminal. Closing the
-browser is not a guarantee that a cloud session survives resource reclamation.
-Keep checkpoints on persistent storage and retain a separate backup. Do not run
-training on a shared login node. Queue/resource provisioning is not automated here.
-
-## 5. Generate and validate a submission
-
-```bash
-.venv/bin/python -m src.predict --checkpoint runs/baseline_s2026/best.pt --output submissions/baseline_s2026/submission.csv
-.venv/bin/python -m src.submission --file submissions/baseline_s2026/submission.csv --sample data/sample_submission.csv
-```
-
-Export uses one model in FP32, no TTA. Predictions are keyed by ID and written in
-the exact sample-submission order, even if `test.csv` has another order. The
-validator checks unique IDs, row count/order, exactly `id,label`, and integer
-labels 0–9. With the supplied dataset the CSV has 2,000 data rows plus its header.
-Checkpoint and submission hashes are stored in `submission.metadata.json`.
-
-Each candidate gets a separate submission directory; files are never silently
-overwritten. Smoke-test checkpoints are rejected unless `--allow-smoke` is
-explicitly used for local pipeline testing. **Do not upload smoke predictions.**
-Upload only the final CSV in Kaggle's File Upload dialog; this code does not use
-submission quota or log into Kaggle. Full-data retraining and stronger augmentations
-can be added once the baseline is validated; they are not implemented here yet.
-
-## 6. Tests and collaboration
-
-```bash
-.venv/bin/python -m unittest discover -s tests -v
-```
-
-Tests use small synthetic images in a temporary directory, not the hidden test
-set. They cover all candidate parameter budgets, forward/backward passes, fixed
-stratified splits, submission validation/order, checkpoint prediction and exact
-CPU resumption across a completed epoch. They do not measure CIFAR-10 accuracy.
-
-See `CONTRIBUTING.md` for branch/PR workflow and `REFERENCES.md` for attribution.
-Record measured experiments in `experiments/results.csv`. Keep data and large
-artifacts outside Git. Project report drafting is deferred; log retention starts now.
-
-## 7. Complete artifact workflow
-
-After preparing the dataset and split, use one config at a time:
-
-```bash
-.venv/bin/python -m src.workflow --config configs/baseline.json --device mps
-.venv/bin/python -m src.workflow --config configs/baseline.json --device mps --resume
-```
-
-Use `--device cuda` on an allocated NVIDIA GPU. The wrapper preserves the original
-trainer and its resume rules. It adds `curves.png`, full best-checkpoint FP32
-validation metrics, per-class statistics, validation predictions, confusion-matrix
-CSV/PNG and `artifacts.json` with file sizes/hashes. Smoke results are marked as
-such; partial runs export curves but defer full validation analysis until completion.
-Validation data come only from the saved split, whose hash must match the checkpoint.
-FP32 reevaluation may differ slightly from training-time AMP metrics.
-
-To regenerate validation analysis without training:
-
-```bash
-.venv/bin/python -m src.evaluate --run-dir runs/baseline_s2026 --device mps
-```
-
-The workflow defaults to no hidden-evaluation prediction. To explicitly export
-a CSV after a complete formal training run, pass
-`--submission-output submissions/baseline_s2026/submission.csv`. Existing files
-are protected. For a previously completed run, use `src.predict` directly.
-
-The new workflow and evaluation code were statically checked only at the user's
-request; they have not been executed. See `VALIDATION.md` for verification scope.
+GPT/Codex assisted implementation, debugging, experiment work and documentation;
+the team is responsible for reviewing and understanding the work. Preserve the
+adapted AugMix component's [Apache-2.0 license](third_party/augmix/LICENSE) and
+[notice](third_party/augmix/NOTICE), including embedded source headers. This does
+not assign that license to the repository as a whole.

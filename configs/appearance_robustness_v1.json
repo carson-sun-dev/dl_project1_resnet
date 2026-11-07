@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "name": "appearance_robustness_v1",
+  "description": "Fixed single-factor PIL RGB transformations before original training-only normalization; original validation IDs only. Synthetic diagnostic, not CIFAR-10-C or an estimate of leaderboard accuracy.",
+  "conditions": [
+    {"name": "clean", "kind": "identity", "factor": 1.0},
+    {"name": "brightness_060", "kind": "brightness", "factor": 0.6},
+    {"name": "brightness_080", "kind": "brightness", "factor": 0.8},
+    {"name": "brightness_120", "kind": "brightness", "factor": 1.2},
+    {"name": "brightness_140", "kind": "brightness", "factor": 1.4},
+    {"name": "contrast_060", "kind": "contrast", "factor": 0.6},
+    {"name": "contrast_080", "kind": "contrast", "factor": 0.8},
+    {"name": "contrast_120", "kind": "contrast", "factor": 1.2},
+    {"name": "contrast_140", "kind": "contrast", "factor": 1.4},
+    {"name": "grayscale", "kind": "grayscale", "factor": 1.0}
+  ]
+}

@@ -16,6 +16,11 @@ staff if necessary; this scaffold does not post messages on the team's behalf.
    directory between training processes.
 4. Run `python -m unittest discover -s tests -v` and the parameter-count check.
    Ask a teammate to review the PR before merging.
+   Changes involving the final model also require
+   `python final_model/run.py verify`, `python final_model/run.py model`, and
+   `python -m unittest discover -s final_model/tests -v` on CPU. Preserve the
+   frozen `final_model/src/` and configuration byte identities; add portable
+   preparation/entry-point tooling outside that frozen source tree.
 5. Add a measured row to `experiments/results.csv`, including the Git commit and
    seed. Accuracy values are fractions (0 to 1); leave unknown fields empty.
 6. Retain private checkpoints and logs outside Git. Copy artifacts between

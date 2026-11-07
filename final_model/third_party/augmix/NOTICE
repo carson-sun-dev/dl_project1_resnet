@@ -1,0 +1,24 @@
+AugMix: A Simple Data Processing Method to Improve Robustness and Uncertainty
+Copyright 2019 Google LLC
+Source: https://github.com/google-research/augmix
+Inspected upstream revision: 9b9824c7c19bf7e72df2d085d97b99b3bfb00ba4
+License: Apache License 2.0 (full text in LICENSE in this directory).
+
+src/augmix.py adapts operator parameterization and convex mixing from
+augmentations.py and cifar.py in the above repository. The original copyright
+and license header are retained. This NOTICE is a project attribution record,
+not an assertion that the upstream repository supplied a NOTICE file.
+
+Project modifications: explicit configuration validation; shared crop/flip base;
+course-data-only integration; existing split normalization; stable log-space
+FP32 three-view Jensen-Shannon loss; deterministic resume identity and tests.
+No author architecture, pretrained weights, external data, or dataset-download
+and external-corruption evaluation code is included.
+
+Paper: Hendrycks, Mu, Cubuk, Zoph, Gilmer, Lakshminarayanan (ICLR 2020),
+"AugMix: A Simple Data Processing Method to Improve Robustness and Uncertainty"
+https://arxiv.org/abs/1912.02781
+
+The repository has no declared root software license at implementation time.
+No conflicting repository license was found. The adapted module retains its
+Apache-2.0 terms and notices; this does not relicense unrelated project files.

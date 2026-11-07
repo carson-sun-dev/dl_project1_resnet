@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "candidate_id": "full50k_asam400_s2026_final_ema400",
+  "source_hashes": {
+    "__init__.py": "dca6745249699af4b5f7645d46f22d259cdccc9199a6d88fccd31769e1fc49a9",
+    "augmentation.py": "4c75a6b471a9f18a412a9984485e1e640ec842401a80d37a52df19de731695a2",
+    "augmix.py": "78d15ecf627b35deaeeed916634bfbc82219ca3970748c0fab5fe39f80e4f0d9",
+    "benchmark.py": "e62d2cfbb8d45da957039188cadd630fe735a2ab48457a2d40a7bee1049a114f",
+    "calibration.py": "9b1297a0a455aba9208dfd09baca5f243fb8dcbf995afea13aa726bbbecde5fd",
+    "data.py": "79cafeb2863384dcc6e432d3320cd1fba3e3d9854f89cea1bba9d4f7018acf1a",
+    "evaluate.py": "0584e1292db9e31f5728ec30c50a8f22fb27b67015d36156392eb08b6b0c2aa9",
+    "final_refit.py": "661f09a1079ac018e8e10b9524566808ca2568d8f654954c4fb70056ac343d9b",
+    "models.py": "831e84200857561e3b11b11864bae56ac9cccadbb4627b8f958ef04f56f12cbc",
+    "multiscale.py": "1b416f99982faeabe1d1188d51152ece523d771a87f440fa4c23ea34f8bbb345",
+    "optimization.py": "ec32d7e4d3273e3dda4606497ca510949c53d1012d1a998086e9582cd3d444c6",
+    "plot.py": "f46450b76223db81457a10d3def7ee831681349dc34d5fd8f68c77d724e794c6",
+    "predict.py": "11060eb6437898c9f42157100617fc6e6d053893e84ce7d64eb2cd6bbac1f7cf",
+    "robustness.py": "6d5cb838cdaa0d4f8b7a598605a226ae294189f60a3a16be07349172bc03d3d4",
+    "sampling.py": "865d85df849e660091322040a6f4c73ff02adf4830f1f6ed30a5ce526d5f4e93",
+    "submission.py": "2429ca4e7948b982c2321e2b72d426734dfe5a31eef3d74020c599723a358281",
+    "train.py": "e8d0e7228176fe64bf5f8e72b7bef3a608f9bc495ba2c5c40de3ac8e427df178",
+    "tta.py": "bc1b658f4ead19e0e1de11960d9597226ce377640b1933b8e2becb4afc00a780",
+    "utils.py": "e772561fd3de0fb7dfcfaa34de0e337d3c8267dd64e28b4277e0e29a35ee0e55",
+    "workflow.py": "a997fbbfd98eda1c65fef91f21d3e5a6cf1e0648d9df74a27c53a4588f435950"
+  },
+  "config_file": "configs/final_refit_preact_asam400_s2026_cloud.json",
+  "config_sha256": "01e8130d84df0608979e31b6dbeadad1ea81727cf98fff7a0237c4ae2d57f881",
+  "checkpoint_sha256": "07925cdd0689e468ad01f009d26879c724b78a9c0abf5ec9753e1be753611276",
+  "checkpoint_epoch": 400,
+  "trainable_parameters": 4298970,
+  "inference_policy": "standard_fp32_single_model",
+  "deployment_weight_variant": "ema_online_bn_buffers",
+  "public_accuracy_percent": 89.8,
+  "public_submission_id": 58063369,
+  "training_data": {
+    "images": 50000,
+    "original_training_images": 45000,
+    "former_validation_images_included_in_training": 5000,
+    "original_split_sha256": "2fc944cf610ada2c12bd22adb33e93f460ac0611ece0c3991f3d3c329581751d",
+    "train_csv_sha256": "b596f4cbb12107ecac987e3a61123af40408a6bb83719a1dbb5cc3ce70968e93",
+    "image_manifest_sha256": "c7bfa316130fec20850170ff5257e36318c4bf4f1b9be7cd9e09c62114ff6bde",
+    "encoded_training_image_corpus_sha256": "9ce3f1f7c0856fcbb0d410bf1f247e284a386969a7680346b8231946e481d0f3",
+    "normalization": {
+      "mean": [
+        0.4915135944308404,
+        0.48231470971200857,
+        0.4468138379970015
+      ],
+      "std": [
+        0.24705092701489773,
+        0.24347971893365983,
+        0.2615095063426547
+      ]
+    },
+    "classes": [
+      "airplane",
+      "automobile",
+      "bird",
+      "cat",
+      "deer",
+      "dog",
+      "frog",
+      "horse",
+      "ship",
+      "truck"
+    ],
+    "hidden_data_accessed": false
+  }
+}

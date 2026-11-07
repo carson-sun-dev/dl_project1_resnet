@@ -1,3 +1,5 @@
+> Current final-model instructions and results are in [README.md](README.md) and [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md). This guide preserves the earlier scaffold workflow; its historical status claims are superseded.
+
 # 队友使用指南：CIFAR-10 ResNet 项目
 
 这是一套训练代码、三份正式模型配置。每次只运行一个模型，比较同一验证集上的结果，最终选一个模型生成 Kaggle 提交文件。先跑 Baseline，再跑 Wide；Deep 可按时间决定。本指南不代表已有正式实验成绩。
