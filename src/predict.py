@@ -57,7 +57,11 @@ def predict(checkpoint, data_dir, output, device="auto", batch_size=256, num_wor
     metadata = {"checkpoint_sha256": file_hash(checkpoint), "checkpoint_epoch": state["epoch"],
                 "parameter_counts": parameter_counts(model), "model_config": state["model_config"],
                 "test_csv_sha256": file_hash(root/"test.csv"), "submission_sha256": file_hash(output),
-                "smoke_test": state["smoke_test"], "rows": len(sample), "inference": "single model, FP32, no TTA"}
+                "smoke_test": state["smoke_test"], "rows": len(sample), "inference": getattr(model, "inference_description", "single model, FP32, no TTA")}
+    if state.get("training_scope") == "full_data":
+        metadata.update(training_scope="full_data", training_images=state["training_images"],
+                        selection_checkpoint_sha256=state["identity"]["selection_checkpoint_sha256"],
+                        validation_accuracy=None)
     write_json(output.with_suffix(".metadata.json"), metadata)
     return metadata
 

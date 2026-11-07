@@ -1,1 +1,2 @@
 experiment,git_commit,config,seed,trainable_parameters,best_val_accuracy,best_epoch,training_seconds,public_score,checkpoint_sha256,notes
+shaohan_shake_full1000_s2026,f222297+shake899-branch,configs/shake_full1000_s2026.json,2026,4561354,,,,0.899,324bd810a33d158ff6487fce51a02b12a9076cab65d38fef379b9420adb38c17,50k scratch1000; fixed final epoch; no independent validation. FP32 original+mirror logits. Public score confirmed by submitter and team chat. Contributor: Shaohan Yang. Private score unknown.

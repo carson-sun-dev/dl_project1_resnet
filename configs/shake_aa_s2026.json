@@ -1,0 +1,36 @@
+{
+  "seed": 2026,
+  "data_dir": "data",
+  "split_file": "splits/seed2026.json",
+  "split_sha256": "2fc944cf610ada2c12bd22adb33e93f460ac0611ece0c3991f3d3c329581751d",
+  "run_dir": "runs/shake_aa_s2026",
+  "model": {
+    "architecture": "shake_shake",
+    "width": 40,
+    "blocks": [4, 4, 4]
+  },
+  "training": {
+    "epochs": 600,
+    "batch_size": 128,
+    "lr": 0.2,
+    "min_lr": 0.0,
+    "warmup_epochs": 5,
+    "momentum": 0.9,
+    "nesterov": true,
+    "weight_decay": 0.0001
+  },
+  "augmentation": {
+    "policy": "cifar10_autoaugment",
+    "interpolation": "nearest",
+    "crop_padding": 4,
+    "padding_mode": "constant",
+    "cutout_length": 16
+  },
+  "runtime": {
+    "amp": true,
+    "num_workers": 2,
+    "cpu_threads": 4,
+    "validation_batch_size": 256,
+    "cudnn_benchmark": true
+  }
+}

@@ -3,7 +3,7 @@ import argparse
 from contextlib import nullcontext
 import copy
 import csv
-import fcntl
+from filelock import FileLock, Timeout
 import json
 from pathlib import Path
 import platform
@@ -71,12 +71,12 @@ def train(config, resume=False, stop_after_epoch=None):
     run_dir = Path(c["run_dir"])
     run_dir.mkdir(parents=True, exist_ok=True)
     # OS releases the advisory lock after process exit, including termination.
-    with (run_dir/".run.lock").open("a") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise RuntimeError("Another training process is using this run directory") from exc
-        return _train_locked(c, run_dir, resume, stop_after_epoch)
+    try:
+        with FileLock(str(run_dir / ".run.lock"), timeout=0):
+            return _train_locked(c, run_dir, resume, stop_after_epoch)
+    except Timeout as exc:
+        raise RuntimeError("Another training process is using this run directory") from exc
+
 
 
 def _train_locked(c, run_dir, resume, stop_after_epoch):
