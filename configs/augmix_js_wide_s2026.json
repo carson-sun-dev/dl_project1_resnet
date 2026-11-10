@@ -1,0 +1,45 @@
+{
+  "seed": 2026,
+  "data_dir": "data",
+  "split_file": "splits/seed2026.json",
+  "run_dir": "runs/augmix_js_wide_s2026_local",
+  "model": {
+    "channels": [64, 128, 256],
+    "blocks": [3, 3, 3],
+    "num_classes": 10
+  },
+  "training": {
+    "epochs": 200,
+    "batch_size": 128,
+    "optimizer": "sgd",
+    "lr": 0.1,
+    "min_lr": 0.001,
+    "warmup_epochs": 5,
+    "momentum": 0.9,
+    "weight_decay": 0.0005,
+    "label_smoothing": 0.0,
+    "mixup_alpha": 0.0,
+    "mixup_probability": 0.0,
+    "cutout_length": 0,
+    "cutout_probability": 0.0,
+    "color_jitter": null,
+    "random_grayscale_probability": 0.0,
+    "augmix": {
+      "width": 3,
+      "depth": -1,
+      "severity": 3,
+      "mixture_concentration": 1.0,
+      "js_coefficient": 12.0,
+      "all_ops": false
+    },
+    "max_train_batches": 0,
+    "max_val_batches": 0
+  },
+  "runtime": {
+    "device": "cuda",
+    "amp": true,
+    "num_workers": 2,
+    "cpu_threads": 4,
+    "strict_source_resume": true
+  }
+}

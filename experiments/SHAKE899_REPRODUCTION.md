@@ -2,7 +2,7 @@
 
 贡献者：Shaohan Yang（GitHub：SHAOHANYANG）。
 
-本分支交付公榜 0.899 的单模型训练与推理代码、实际配置和优化报告。分支不包含比赛数据、划分 ID、模型权重、提交预测或云服务凭据。完整优化历程见 [优化报告](SHAOHAN_OPTIMIZATION_REPORT.md)。报告中的在线蒸馏和其他历史实验仅作为结果对照，本分支不包含这些旁支代码。
+仓库中的 Shake-Shake 路线交付公榜 0.899 的单模型训练与推理代码、实际配置和优化报告。公开仓库不包含比赛数据、划分 ID、模型权重、提交预测或云服务凭据。完整优化历程见 [优化报告](SHAOHAN_OPTIMIZATION_REPORT.md)。报告中的在线蒸馏和其他历史实验仅作为结果对照，本路线不包含这些旁支代码。
 
 ## 实际配方
 
@@ -45,3 +45,23 @@ python -m src.models --config configs/shake_aa_s2026.json
 原提交 SHA256：`cb238fdce299420bfcf504aa512226e83783649f4db4f389abec79cc0fd6d69f`。
 
 Public Score 0.899 来自提交后的组内确认，Private Score 未知。
+
+
+## Integration with the ASAM route
+
+The ASAM implementation is frozen under `final_model/`; do not mix its modules
+with root `src/`. Use separate environments: `final_model/requirements.txt` for
+ASAM and `requirements-shake899.txt` for Shake-Shake. The merged model factory
+supports the historical ResNet, PreAct WRN and Shake-Shake routes. This route's
+core network/trainers and configuration snapshots remain unchanged.
+
+Do not pass `--horizontal-flip` to `src.predict` for Shake-Shake: `forward`
+already averages original/flip logits. The extra probability-averaging switch
+is rejected to avoid combining inference protocols. No weight values or the
+original inference definition are changed. Integration checks use synthetic CPU
+inputs only; the 89.90% upload was not independently re-audited here.
+
+Strict source hashes belong to the original training workspace. Resume existing
+runs with their recorded source/environment, not the merged root modules.
+Ask the teammate to confirm the submission ID, official flip-inference permission
+and any private score; none is established by the integration tests.

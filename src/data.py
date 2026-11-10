@@ -9,6 +9,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
+from .augmentation import Cutout, validate_color_augmentation
 from .utils import file_hash, read_json, validate_normalization, write_json
 
 CLASSES = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
@@ -132,10 +133,25 @@ def load_split(root, path):
     return split, [lookup[i] for i in a], [lookup[i] for i in b]
 
 
-def make_transform(mean, std, training):
+def make_transform(mean, std, training, cutout_length=0, cutout_probability=1.0,
+                   color_jitter=None, random_grayscale_probability=0.0):
     validate_normalization({"mean": mean, "std": std})
+    validate_color_augmentation({"color_jitter": color_jitter,
+                                 "random_grayscale_probability": random_grayscale_probability})
     steps = [transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip()] if training else []
-    return transforms.Compose(steps + [transforms.ToTensor(), transforms.Normalize(mean, std)])
+    if training:
+        jitter = color_jitter or {}
+        strengths = {key: jitter.get(key, 0.0) for key in ("brightness", "contrast", "saturation", "hue")}
+        probability = jitter.get("probability", 1.0)
+        if probability and any(strengths.values()):
+            operation = transforms.ColorJitter(**strengths)
+            steps.append(transforms.RandomApply([operation], p=probability) if probability < 1 else operation)
+        if random_grayscale_probability:
+            steps.append(transforms.RandomGrayscale(p=random_grayscale_probability))
+    steps += [transforms.ToTensor(), transforms.Normalize(mean, std)]
+    if training and cutout_length:
+        steps.append(Cutout(cutout_length, cutout_probability))
+    return transforms.Compose(steps)
 
 
 class ImageDataset(Dataset):

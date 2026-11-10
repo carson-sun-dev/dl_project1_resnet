@@ -99,7 +99,14 @@ class ShakeShakeTests(unittest.TestCase):
             logits = model(torch.randn(2, 3, 32, 32))
             loss = nn.functional.cross_entropy(logits, torch.tensor([2, 5]))
         self.assertEqual(logits.dtype, torch.bfloat16)
-        loss.backward()
+        try:
+            loss.backward()
+        except RuntimeError as exc:
+            # This is a CPU backend capability check, not a CUDA AMP check.
+            # Do not hide unrelated shape, autograd or numerical failures.
+            if "DNNL does not support bf16/f16 backward" not in str(exc):
+                raise
+            self.skipTest(f"Native CPU BF16 backward unavailable: {exc}")
         self.assertTrue(all(p.grad is not None and torch.isfinite(p.grad).all()
                             for p in model.parameters()))
 

@@ -1,0 +1,65 @@
+{
+  "seed": 2026,
+  "data_dir": "data",
+  "split_file": "splits/seed2026.json",
+  "run_dir": "runs/optimization_preact_sam400_s2026_local",
+  "model": {
+    "architecture": "preactivation_wrn",
+    "channels": [
+      64,
+      128,
+      256
+    ],
+    "blocks": [
+      3,
+      3,
+      3
+    ],
+    "num_classes": 10,
+    "stem_channels": 16,
+    "dropout": 0
+  },
+  "training": {
+    "epochs": 400,
+    "batch_size": 128,
+    "optimizer": "sgd",
+    "lr": 0.1,
+    "min_lr": 0.001,
+    "warmup_epochs": 5,
+    "momentum": 0.9,
+    "weight_decay": 0.0005,
+    "label_smoothing": 0,
+    "mixup_alpha": 0.2,
+    "mixup_probability": 1,
+    "cutout_length": 16,
+    "cutout_probability": 1,
+    "color_jitter": {
+      "brightness": 0.2,
+      "contrast": 0.2,
+      "saturation": 0.2,
+      "hue": 0.02,
+      "probability": 0.8
+    },
+    "random_grayscale_probability": 0.1,
+    "max_train_batches": 0,
+    "max_val_batches": 0,
+    "optimization": {
+      "schema_version": 1,
+      "method": "sam",
+      "rho": 0.05,
+      "eta": 0,
+      "ema": {
+        "enabled": true,
+        "decay": 0.999,
+        "warmup": true
+      }
+    }
+  },
+  "runtime": {
+    "device": "cuda",
+    "amp": true,
+    "num_workers": 2,
+    "cpu_threads": 4,
+    "strict_source_resume": true
+  }
+}

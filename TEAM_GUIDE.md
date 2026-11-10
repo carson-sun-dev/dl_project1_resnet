@@ -1,10 +1,12 @@
+> Current ASAM and Shake-Shake instructions are in [README.md](README.md), [ASAM reproduction](docs/REPRODUCIBILITY.md) and [Shake-Shake reproduction](experiments/SHAKE899_REPRODUCTION.md). This guide preserves the earlier scaffold workflow; its historical status claims are superseded.
+
 # 队友使用指南：CIFAR-10 ResNet 项目
 
 这是一套训练代码、三份正式模型配置。每次只运行一个模型，比较同一验证集上的结果，最终选一个模型生成 Kaggle 提交文件。先跑 Baseline，再跑 Wide；Deep 可按时间决定。本指南不代表已有正式实验成绩。
 
 ## 1. 第一次拿到项目
 
-支持 macOS / Linux，Python 3.9–3.12。Windows 请使用 WSL2（训练使用 Unix 文件锁）。以下命令在终端运行；在 JupyterLab 中打开 Terminal，不要直接粘贴进 Python 单元格。
+当前训练锁支持 Windows 与 POSIX。以下保留的旧版命令以 macOS / Linux 为例；最终模型的环境要求和入口请以 README 中各路线的复现文档为准。命令在终端运行；在 JupyterLab 中打开 Terminal，不要直接粘贴进 Python 单元格。
 
 ```bash
 git clone https://github.com/carson-sun-dev/dl_project1_resnet.git

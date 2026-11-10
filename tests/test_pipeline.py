@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
@@ -18,7 +19,9 @@ from src.workflow import run as run_workflow
 from src.predict import predict
 from src.submission import validate_submission
 from src.train import train
-from src.utils import precision_policy, read_json, write_json
+from src.tta import compare as compare_tta
+from src.robustness import benchmark as robustness_benchmark
+from src.utils import epoch_lr, file_hash, precision_policy, read_json, write_json
 
 
 def csv_write(path, columns, rows):
@@ -71,7 +74,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_architectures_and_parameter_budget(self):
         root = Path(__file__).resolve().parents[1]
-        for name in ["baseline", "wide", "deep", "smoke"]:
+        for name in ["baseline", "wide", "deep", "smoke", "regularized_wide", "color_robustness_wide"]:
             m = build_model(read_json(root/"configs"/f"{name}.json")["model"]).eval()
             self.assertLessEqual(parameter_counts(m)["trainable"], 5_000_000)
             logits = m(torch.randn(2, 3, 32, 32))
@@ -233,6 +236,137 @@ class PipelineTests(unittest.TestCase):
             train(resumed)
         with self.assertRaises(FileExistsError):
             predict(best, self.data, output, device="cpu", allow_smoke=True)
+
+    def test_regularized_pilot_preserves_schedule_and_exact_resume(self):
+        c = read_json(Path(__file__).resolve().parents[1]/"configs/regularized_wide.json")
+        c.update(data_dir=str(self.data), split_file=str(self.split))
+        c["model"].update(channels=[4, 8, 16], blocks=[1, 1, 1])
+        c["training"].update(batch_size=8, max_train_batches=2, label_smoothing=0.1)
+        # Exercise both main-process and worker-process augmentation RNG restoration.
+        for workers in (0, 1):
+            with self.subTest(workers=workers), contextlib.redirect_stdout(io.StringIO()):
+                c["runtime"].update(device="cpu", num_workers=workers, cpu_threads=2)
+                c["run_dir"] = str(self.root/f"regularized_full_{workers}")
+                train(c, stop_after_epoch=4)
+                resumed = copy.deepcopy(c)
+                resumed["run_dir"] = str(self.root/f"regularized_resumed_{workers}")
+                partial = train(resumed, stop_after_epoch=3)
+                self.assertEqual(partial["planned_epochs"], 200)
+                self.assertEqual(partial["completed_epochs"], 3)
+                self.assertFalse(partial["complete"])
+                complete = train(resumed, resume=True, stop_after_epoch=4)
+                a = torch.load(Path(c["run_dir"])/"last.pt", weights_only=False)
+                b = torch.load(Path(resumed["run_dir"])/"last.pt", weights_only=False)
+                for key in a["model"]:
+                    self.assertTrue(torch.equal(a["model"][key], b["model"][key]), key)
+                self.assertEqual(a["best_score"], b["best_score"])
+                self.assertEqual([h["lr"] for h in b["history"]],
+                                 [epoch_lr(epoch, c["training"]) for epoch in range(4)])
+                torch.testing.assert_close(a["rng"]["torch"], b["rng"]["torch"])
+                self.assertEqual(complete["completed_epochs"], 4)
+                self.assertTrue(all(row["validation_seconds"] >= 0 for row in b["history"]))
+                # An absolute stop already reached must not perform an extra update.
+                stopped = train(resumed, resume=True, stop_after_epoch=3)
+                self.assertEqual(stopped["completed_epochs"], 4)
+                # Exports also accept history mixing legacy rows and timed rows.
+                legacy_history = copy.deepcopy(b)
+                legacy_history["history"][0].pop("validation_seconds")
+                torch.save(legacy_history, Path(resumed["run_dir"])/"last.pt")
+                train(resumed, resume=True, stop_after_epoch=4)
+                with (Path(resumed["run_dir"])/"metrics.csv").open(newline="") as handle:
+                    exported = list(csv.DictReader(handle))
+                self.assertEqual(exported[0]["validation_seconds"], "")
+                self.assertGreaterEqual(float(exported[1]["validation_seconds"]), 0)
+                changed = copy.deepcopy(resumed)
+                changed["training"]["mixup_alpha"] = 0.4
+                with self.assertRaisesRegex(ValueError, "Resume config/split differs"):
+                    train(changed, resume=True, stop_after_epoch=5)
+        report_path = self.root / "tta-smoke.json"
+        report = compare_tta(resumed["run_dir"], self.data, report_path, "cpu", batch_size=4)
+        self.assertEqual(report["images"], 10)
+        self.assertTrue(report["full_validation"])
+        self.assertFalse(report["beneficial"])
+        best = Path(resumed["run_dir"])/"best.pt"
+        output = self.root / "blocked_tta" / "submission.csv"
+        with self.assertRaisesRegex(ValueError, "accuracy benefit"):
+            predict(best, self.data, output, "cpu", allow_smoke=True,
+                    horizontal_flip=True, tta_validation=report_path)
+        self.assertFalse(output.exists())
+        with self.assertRaises(FileExistsError):
+            compare_tta(resumed["run_dir"], self.data, report_path, "cpu")
+
+    def test_color_resume_preserves_weights_rng_and_identity(self):
+        c = read_json(Path(__file__).resolve().parents[1]/"configs/color_robustness_wide.json")
+        c.update(data_dir=str(self.data), split_file=str(self.split))
+        c["model"].update(channels=[4, 8, 16], blocks=[1, 1, 1])
+        c["training"].update(batch_size=8, max_train_batches=2)
+        for workers in (0, 1):
+            with self.subTest(workers=workers), contextlib.redirect_stdout(io.StringIO()):
+                c["runtime"].update(device="cpu", num_workers=workers, cpu_threads=2)
+                c["run_dir"] = str(self.root/f"color_full_{workers}")
+                train(c, stop_after_epoch=2)
+                resumed = copy.deepcopy(c)
+                resumed["run_dir"] = str(self.root/f"color_resumed_{workers}")
+                train(resumed, stop_after_epoch=1)
+                train(resumed, resume=True, stop_after_epoch=2)
+                a = torch.load(Path(c["run_dir"])/"last.pt", weights_only=False)
+                b = torch.load(Path(resumed["run_dir"])/"last.pt", weights_only=False)
+                for name in a["model"]:
+                    self.assertTrue(torch.equal(a["model"][name], b["model"][name]), name)
+                self.assertEqual(a["best_score"], b["best_score"])
+                torch.testing.assert_close(a["rng"]["torch"], b["rng"]["torch"], rtol=0, atol=0)
+                torch.testing.assert_close(a["train_generator"], b["train_generator"], rtol=0, atol=0)
+                self.assertEqual([row["lr"] for row in b["history"]], [0.02, 0.04])
+                modified = copy.deepcopy(resumed)
+                modified["training"]["color_jitter"]["brightness"] = 0.3
+                with self.assertRaisesRegex(ValueError, "Resume config/split differs"):
+                    train(modified, resume=True, stop_after_epoch=3)
+
+    def test_robustness_uses_only_original_validation_and_preserves_run(self):
+        c = read_json(Path(__file__).resolve().parents[1]/"configs/smoke.json")
+        c.update(data_dir=str(self.data), split_file=str(self.split), run_dir=str(self.root/"robustness_model"))
+        c["model"].update(channels=[4, 8, 16], blocks=[1, 1, 1])
+        c["runtime"].update(device="cpu", num_workers=0, cpu_threads=2)
+        c["training"].update(batch_size=8, max_train_batches=2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            train(c, stop_after_epoch=1)
+        run = Path(c["run_dir"])
+        before = {path.name: file_hash(path) for path in run.iterdir() if path.is_file()}
+        protocol = read_json(Path(__file__).resolve().parents[1]/"configs/appearance_robustness_v1.json")
+        protocol["conditions"] = [protocol["conditions"][index] for index in (0, 1, -1)]
+        protocol_path = self.root/"short_protocol.json"
+        write_json(protocol_path, protocol)
+        output = self.root/"diagnostics"/"robustness.json"
+        _, _, validation_rows = load_split(self.data, self.split)
+        names = {row["filename"] for row in validation_rows}
+        from src.data import image_path as original_image_path
+
+        def validation_path_only(root, folder, filename):
+            self.assertEqual(folder, "train_images")
+            self.assertIn(filename, names)
+            return original_image_path(root, folder, filename)
+
+        with self.assertRaisesRegex(ValueError, "Smoke checkpoint"):
+            robustness_benchmark(run, self.data, protocol_path, output, device="cpu")
+        self.assertFalse(output.exists())
+        with patch("src.data.image_path", side_effect=validation_path_only), contextlib.redirect_stdout(io.StringIO()):
+            report = robustness_benchmark(run, self.data, protocol_path, output, device="cpu", batch_size=4,
+                                          cpu_threads=2, allow_smoke=True)
+        self.assertTrue(report["all_outputs_finite"])
+        self.assertTrue(report["full_original_validation_split"])
+        self.assertFalse(report["hidden_evaluation_images_or_labels_accessed"])
+        self.assertEqual(report["validation_images_per_condition"], 10)
+        self.assertEqual(len(report["results"]), 3)
+        self.assertEqual(report["checkpoint_sha256"], before["best.pt"])
+        self.assertEqual(before, {path.name: file_hash(path) for path in run.iterdir() if path.is_file()})
+        with output.with_suffix(".csv").open(newline="") as handle:
+            exported = list(csv.DictReader(handle))
+        self.assertEqual(len(exported), 6)
+        self.assertTrue(all(int(row["images"]) == 10 for row in exported))
+        with self.assertRaises(FileExistsError):
+            robustness_benchmark(run, self.data, protocol_path, output, device="cpu", allow_smoke=True)
+        with self.assertRaisesRegex(ValueError, "outside"):
+            robustness_benchmark(run, self.data, protocol_path, run/"do_not_write.json", device="cpu", allow_smoke=True)
 
 
 if __name__ == "__main__":

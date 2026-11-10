@@ -1,19 +1,18 @@
-# References and provenance
+# References and attribution
 
-- He et al., *Deep Residual Learning for Image Recognition*: https://arxiv.org/abs/1512.03385
-  Residual learning and convolutional residual blocks.
-- Zagoruyko and Komodakis, *Wide Residual Networks*: https://arxiv.org/abs/1605.07146
-  Motivation for width/depth experiments; the `wide` configuration here is a custom
-  CIFAR ResNet, not a claim of reproducing an exact published WRN.
-- PyTorch reproducibility guidance: https://docs.pytorch.org/docs/stable/notes/randomness.html
-- PyTorch AMP documentation: https://docs.pytorch.org/docs/stable/amp.html
-- Course-provided Project 1 competition and dataset instructions.
+The current bibliography and implementation/license provenance are maintained in
+[docs/REFERENCES.md](docs/REFERENCES.md).
 
-The scaffold was developed with GPT/Codex assistance for implementation, tests,
-and documentation. Team members should review, understand, and adapt the code.
-No external pretrained checkpoint or training dataset is bundled or downloaded.
-Public implementation code has not been copied into this repository. Record the
-source and applicable license if third-party code is added later.
+The final ASAM implementation is the separately verified
+[final_model](final_model/) package. Root `src/` contains Shake-Shake and earlier local studies;
+it must not be substituted for the exact source of the 89.80% Public submission.
 
-MixUp/CutMix, distillation, ensembling and quantization are not implemented in
-this initial scaffold. They must not be reported as completed experiments.
+Preserve the Apache-2.0 license, notices and source headers for adapted AugMix.
+A third-party component's license is not a new license declaration for the whole
+repository. Research references are not pretrained weights or external data.
+GPT/Codex assistance is acknowledged in the main docs.
+
+The Shake-Shake route cites Gastaldi, *Shake-Shake Regularization* (2017),
+https://arxiv.org/abs/1705.07485, and the author implementation at
+https://github.com/xgastaldi/shake-shake. See the
+[teammate report](experiments/SHAOHAN_OPTIMIZATION_REPORT.md).

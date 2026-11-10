@@ -118,6 +118,13 @@ class ShakeRefitTests(unittest.TestCase):
         self.assertEqual(metadata["training_images"], 40)
         self.assertIsNone(metadata["validation_accuracy"])
         self.assertEqual(metadata["selection_checkpoint_sha256"], refit.SOURCE_SHA256)
+        self.assertIn("horizontal-flip logits", metadata["inference"])
+        self.assertIsNone(metadata["tta_validation_sha256"])
+        rejected = self.root / "double_flip" / "submission.csv"
+        with self.assertRaisesRegex(ValueError, "already averages"):
+            predict(root / "final.pt", self.data, rejected, "cpu", horizontal_flip=True)
+        self.assertFalse(rejected.exists())
+        self.assertFalse(rejected.with_suffix(".metadata.json").exists())
         # Even if a caller renames final.pt to the evaluator's best.pt convention,
         # full-data scope must block scoring on now-trained former validation IDs.
         shutil.copyfile(root / "final.pt", root / "best.pt")
